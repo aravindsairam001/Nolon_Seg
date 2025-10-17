@@ -1,3 +1,0 @@
-total_frames: 174
-frames_with_floor: 174
-average_floor_coverage: 0.2661752441136677
