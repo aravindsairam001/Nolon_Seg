@@ -1,0 +1,26 @@
+# Core dependencies
+opencv-python>=4.5.0
+numpy>=1.21.0
+torch>=1.9.0
+torchvision>=0.10.0
+
+# SAM (Segment Anything Model)
+git+https://github.com/facebookresearch/segment-anything.git
+
+# Scientific computing
+scipy>=1.7.0
+scikit-learn>=1.0.0
+
+# Visualization
+matplotlib>=3.3.0
+
+# Progress bars
+tqdm>=4.62.0
+
+# Optional: For better video codec support
+ffmpeg-python>=0.2.0
+
+# Optional: For GPU acceleration (install appropriate version for your system)
+# CUDA 11.x: torch torchvision --index-url https://download.pytorch.org/whl/cu118
+# CUDA 12.x: torch torchvision --index-url https://download.pytorch.org/whl/cu121
+# CPU only: torch torchvision --index-url https://download.pytorch.org/whl/cpu
