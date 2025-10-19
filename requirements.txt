@@ -17,6 +17,9 @@ matplotlib>=3.3.0
 # Progress bars
 tqdm>=4.62.0
 
+# Path planning and trajectory optimization
+heapq  # Built-in Python module
+
 # Optional: For better video codec support
 ffmpeg-python>=0.2.0
 

@@ -1,14 +1,21 @@
-# Floor/Pathway Segmentation for First-Person Videos
+# Floor/Pathway Segmentation and Trajectory Planning for First-Person Videos
 
-This project provides a comprehensive solution for segmenting floors and pathways from first-person perspective videos using the Segment Anything Model (SAM) and computer vision techniques.
+This project provides a comprehensive solution for segmenting floors and pathways from first-person perspective videos using the Segment Anything Model (SAM) and computer vision techniques, with integrated trajectory planning and obstacle detection for robot navigation.
 
 ## Features
 
+### Floor Segmentation
 - **Multiple Detection Methods**: Combines geometric, color-based, texture-based, and edge-based detection
 - **SAM Integration**: Uses Segment Anything Model for precise segmentation
 - **Fallback Mechanisms**: Works even without SAM using traditional CV methods
 - **Comprehensive Visualization**: Creates overlays, statistics, and progress visualizations
-- **Flexible Configuration**: Easy-to-modify settings for different scenarios
+
+### Trajectory Planning
+- **Obstacle Detection**: Multi-method obstacle detection (height-based, edge-based, contrast-based)
+- **A* Path Planning**: Efficient pathfinding with obstacle avoidance
+- **Robot Configuration**: Default 3m robot width with customizable parameters
+- **Safety Analysis**: Collision risk assessment and emergency stop detection
+- **Real-time Planning**: Frame-by-frame trajectory generation
 
 ## Installation
 
@@ -31,29 +38,39 @@ This project provides a comprehensive solution for segmenting floors and pathway
 
 ## Usage
 
-### Basic Usage
+### Trajectory Planning (Main System)
 
 Place your video file in the `input_videos/` directory and run:
 
 ```bash
-python floor_segmentation.py input_videos/your_video.mp4
+python trajectory_planning.py input_videos/your_video.mp4
 ```
 
-### Advanced Usage
+### Advanced Trajectory Planning
 
 ```bash
-python floor_segmentation.py input_videos/your_video.mp4 \
+python trajectory_planning.py input_videos/your_video.mp4 \
   --output custom_output_dir \
+  --robot-width 2.5 \
   --sam-model models/sam_vit_b_01ec64.pth \
   --device cuda \
   --frame-skip 2 \
   --confidence 0.6
 ```
 
+### Floor Segmentation Only
+
+For basic floor segmentation without trajectory planning:
+
+```bash
+python floor_segmentation.py input_videos/your_video.mp4
+```
+
 ### Parameters
 
 - `input_video`: Path to your input video file
 - `--output`: Output directory (default: "output")
+- `--robot-width`: Robot width in meters (default: 3.0)
 - `--sam-model`: Path to SAM model checkpoint
 - `--device`: Device to use ("auto", "cpu", "cuda")
 - `--frame-skip`: Process every nth frame (default: 1)
@@ -63,7 +80,8 @@ python floor_segmentation.py input_videos/your_video.mp4 \
 
 ```
 Nolon_Seg/
-├── floor_segmentation.py      # Main script
+├── trajectory_planning.py     # Main trajectory planning script
+├── floor_segmentation.py      # Basic floor segmentation script
 ├── requirements.txt           # Python dependencies
 ├── config.ini                # Configuration settings
 ├── README.md                 # This file
@@ -71,13 +89,20 @@ Nolon_Seg/
 ├── models/                   # SAM model checkpoints
 ├── output/                   # Generated outputs
 │   ├── frames/              # Extracted frames
-│   ├── masks/               # Segmentation masks
-│   └── videos/              # Output videos
+│   ├── masks/               # Floor segmentation masks
+│   ├── obstacle_maps/       # Detected obstacles
+│   ├── trajectories/        # Planned trajectories
+│   ├── videos/              # Output videos with trajectories
+│   └── analysis/            # Safety analysis reports
 └── utils/                    # Utility modules
     ├── __init__.py
     ├── video_processor.py    # Video I/O operations
     ├── floor_detector.py     # Floor detection algorithms
-    └── visualizer.py         # Visualization tools
+    ├── visualizer.py         # Visualization tools
+    ├── obstacle_detector.py  # Obstacle detection methods
+    ├── path_planner.py       # A* pathfinding algorithm
+    ├── robot_config.py       # Robot configuration (3m default)
+    └── trajectory_pipeline.py # Integrated planning pipeline
 ```
 
 ## How It Works
@@ -98,17 +123,41 @@ When available, the Segment Anything Model provides precise segmentation:
 - These regions generate point prompts for SAM
 - SAM produces detailed, accurate segmentation masks
 
-### 3. Fallback Methods
+### 3. Obstacle Detection
 
-If SAM is unavailable, the system uses traditional computer vision:
-- Combines multiple detection methods
-- Applies spatial filtering and morphological operations
-- Ensures robust performance across different scenarios
+Multi-method obstacle detection identifies navigation hazards:
+- **Height-based Detection**: Uses depth or stereo information
+- **Edge-based Detection**: Identifies sharp edges and discontinuities
+- **Contrast-based Detection**: Detects objects with different textures/colors
+
+### 4. Trajectory Planning
+
+A* algorithm plans safe robot paths:
+- Uses detected floor regions as navigable space
+- Inflates obstacles based on robot width (default: 3m)
+- Generates waypoints with safety margins
+- Provides collision risk assessment
+
+### 5. Robot Configuration
+
+Simplified robot setup with 3m default width:
+- Configurable robot dimensions and safety parameters
+- Automatic safety margin calculation
+- Emergency stop distance computation
 
 ## Output Files
 
 After processing, you'll find:
 
+### Trajectory Planning Output
+- **frames/**: Individual video frames
+- **masks/**: Binary masks showing detected floor regions
+- **obstacle_maps/**: Detected obstacles and hazards
+- **trajectories/**: Planned robot paths as JSON data
+- **videos/**: Output video with trajectory overlays
+- **analysis/**: Safety analysis and statistics reports
+
+### Basic Floor Segmentation Output
 - **frames/**: Individual video frames
 - **masks/**: Binary masks showing detected floor regions
 - **videos/**: Output video with floor overlay

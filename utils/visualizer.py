@@ -1,22 +1,320 @@
 """
-Visualization utilities for floor segmentation results.
+Visualization utilities for floor segmentation results and trajectory planning.
 """
 
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict, Any
 import logging
 
 class Visualizer:
-    """Handles visualization of segmentation results and analysis."""
+    """Handles visualization of segmentation results, trajectories, and analysis."""
     
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         
         # Color schemes for visualization
-        self.floor_color = (0, 255, 0)  # Green for floor
+        self.floor_color = (0, 255, 0)     # Green for floor
+        self.obstacle_color = (0, 0, 255)  # Red for obstacles
+        self.trajectory_color = (255, 255, 0)  # Cyan for trajectory
+        self.robot_color = (255, 0, 255)   # Magenta for robot
+        self.dynamic_obstacle_color = (0, 165, 255)  # Orange for dynamic obstacles
         self.overlay_alpha = 0.4
+        
+    def visualize_trajectory_planning(self,
+                                    frame: np.ndarray,
+                                    results: Dict[str, Any]) -> np.ndarray:
+        """
+        Create comprehensive visualization of trajectory planning results.
+        
+        Args:
+            frame: Original frame
+            results: Results from trajectory planning pipeline
+            
+        Returns:
+            Visualization image with all components
+        """
+        vis_frame = frame.copy()
+        
+        # Extract results
+        floor_mask = results.get('floor_mask')
+        obstacle_mask = results.get('obstacle_mask') 
+        dynamic_obstacle_mask = results.get('dynamic_obstacle_mask')
+        trajectory = results.get('trajectory')
+        robot_position = results.get('robot_position')
+        safety_analysis = results.get('safety_analysis', {})
+        
+        # Step 1: Overlay floor mask
+        if floor_mask is not None:
+            vis_frame = self.overlay_mask(vis_frame, floor_mask, self.floor_color, 0.2)
+        
+        # Step 2: Overlay static obstacles
+        if obstacle_mask is not None:
+            vis_frame = self.overlay_mask(vis_frame, obstacle_mask, self.obstacle_color, 0.6)
+        
+        # Step 3: Overlay dynamic obstacles
+        if dynamic_obstacle_mask is not None and np.any(dynamic_obstacle_mask):
+            vis_frame = self.overlay_mask(vis_frame, dynamic_obstacle_mask, 
+                                        self.dynamic_obstacle_color, 0.6)
+        
+        # Step 4: Draw trajectory
+        if trajectory is not None:
+            vis_frame = self.draw_trajectory(vis_frame, trajectory, safety_analysis)
+        
+        # Step 5: Draw robot position and footprint
+        if robot_position is not None:
+            vis_frame = self.draw_robot(vis_frame, robot_position)
+        
+        # Step 6: Add safety information
+        vis_frame = self.add_safety_overlay(vis_frame, safety_analysis)
+        
+        return vis_frame
+    
+    def draw_trajectory(self, 
+                       frame: np.ndarray, 
+                       trajectory: List[Tuple[int, int]],
+                       safety_analysis: Dict[str, Any] = None) -> np.ndarray:
+        """Draw trajectory path on frame."""
+        if not trajectory or len(trajectory) < 2:
+            return frame
+        
+        result = frame.copy()
+        
+        # Determine trajectory color based on safety
+        if safety_analysis:
+            risk_level = safety_analysis.get('collision_risk', 'unknown')
+            if risk_level == 'high':
+                color = (0, 0, 255)  # Red for high risk
+            elif risk_level == 'medium':
+                color = (0, 165, 255)  # Orange for medium risk
+            else:
+                color = self.trajectory_color  # Cyan for low risk
+        else:
+            color = self.trajectory_color
+        
+        # Draw trajectory line
+        points = np.array([(col, row) for row, col in trajectory], dtype=np.int32)
+        cv2.polylines(result, [points], False, color, 3)
+        
+        # Draw waypoints
+        for i, (row, col) in enumerate(trajectory):
+            if i == 0:
+                # Start point
+                cv2.circle(result, (col, row), 8, (0, 255, 0), -1)
+                cv2.circle(result, (col, row), 8, (0, 0, 0), 2)
+            elif i == len(trajectory) - 1:
+                # End point
+                cv2.circle(result, (col, row), 8, (255, 0, 0), -1)
+                cv2.circle(result, (col, row), 8, (0, 0, 0), 2)
+            else:
+                # Intermediate waypoints
+                cv2.circle(result, (col, row), 4, color, -1)
+        
+        # Add trajectory direction arrows
+        if len(trajectory) >= 2:
+            result = self.add_direction_arrows(result, trajectory, color)
+        
+        return result
+    
+    def add_direction_arrows(self, 
+                           frame: np.ndarray, 
+                           trajectory: List[Tuple[int, int]], 
+                           color: Tuple[int, int, int]) -> np.ndarray:
+        """Add direction arrows along trajectory."""
+        result = frame.copy()
+        
+        # Add arrows every few waypoints
+        arrow_spacing = max(1, len(trajectory) // 5)
+        
+        for i in range(0, len(trajectory) - 1, arrow_spacing):
+            if i + 1 < len(trajectory):
+                start_point = trajectory[i]
+                end_point = trajectory[i + 1]
+                
+                # Convert to (x, y) format for cv2
+                start = (start_point[1], start_point[0])
+                end = (end_point[1], end_point[0])
+                
+                # Draw arrow
+                cv2.arrowedLine(result, start, end, color, 2, tipLength=0.3)
+        
+        return result
+    
+    def draw_robot(self, 
+                  frame: np.ndarray, 
+                  robot_position: Tuple[int, int],
+                  robot_heading: float = 0.0,
+                  robot_radius: float = 20) -> np.ndarray:
+        """Draw robot position and orientation."""
+        result = frame.copy()
+        row, col = robot_position
+        center = (col, row)
+        
+        # Draw robot body (circle)
+        cv2.circle(result, center, int(robot_radius), self.robot_color, -1)
+        cv2.circle(result, center, int(robot_radius), (0, 0, 0), 2)
+        
+        # Draw robot heading direction
+        end_x = col + int(robot_radius * 0.8 * np.cos(robot_heading))
+        end_y = row + int(robot_radius * 0.8 * np.sin(robot_heading))
+        cv2.arrowedLine(result, center, (end_x, end_y), (255, 255, 255), 3)
+        
+        # Add robot label
+        cv2.putText(result, "ROBOT", (col - 20, row - robot_radius - 10),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        
+        return result
+    
+    def add_safety_overlay(self, 
+                          frame: np.ndarray, 
+                          safety_analysis: Dict[str, Any]) -> np.ndarray:
+        """Add safety information overlay."""
+        if not safety_analysis:
+            return frame
+        
+        result = frame.copy()
+        height, width = frame.shape[:2]
+        
+        # Create overlay area
+        overlay_height = 120
+        overlay_area = np.zeros((overlay_height, width, 3), dtype=np.uint8)
+        
+        # Background color based on safety status
+        is_safe = safety_analysis.get('is_safe', False)
+        emergency_stop = safety_analysis.get('emergency_stop_required', False)
+        
+        if emergency_stop:
+            bg_color = (0, 0, 139)  # Dark red
+        elif not is_safe:
+            bg_color = (0, 100, 139)  # Dark orange
+        else:
+            bg_color = (0, 100, 0)  # Dark green
+        
+        overlay_area[:] = bg_color
+        
+        # Add safety information text
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 0.6
+        font_color = (255, 255, 255)
+        thickness = 1
+        
+        y_offset = 20
+        line_spacing = 25
+        
+        # Status line
+        status = "EMERGENCY STOP" if emergency_stop else ("UNSAFE" if not is_safe else "SAFE")
+        cv2.putText(overlay_area, f"Status: {status}", (10, y_offset), 
+                   font, font_scale, font_color, thickness)
+        
+        # Risk level
+        risk = safety_analysis.get('collision_risk', 'unknown').upper()
+        cv2.putText(overlay_area, f"Risk: {risk}", (10, y_offset + line_spacing), 
+                   font, font_scale, font_color, thickness)
+        
+        # Clearance distance
+        clearance = safety_analysis.get('clear_distance', 0.0)
+        cv2.putText(overlay_area, f"Clearance: {clearance:.2f}m", (10, y_offset + 2*line_spacing), 
+                   font, font_scale, font_color, thickness)
+        
+        # Confidence
+        confidence = safety_analysis.get('confidence', 0.0)
+        cv2.putText(overlay_area, f"Confidence: {confidence:.1%}", (10, y_offset + 3*line_spacing), 
+                   font, font_scale, font_color, thickness)
+        
+        # Add overlay to frame
+        result[height-overlay_height:height, :] = overlay_area
+        
+        return result
+    
+    def create_trajectory_metrics_visualization(self, 
+                                              metrics: Dict[str, Any]) -> np.ndarray:
+        """Create visualization of trajectory quality metrics."""
+        # Create metrics display
+        img_width, img_height = 400, 300
+        metrics_img = np.zeros((img_height, img_width, 3), dtype=np.uint8)
+        
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 0.5
+        font_color = (255, 255, 255)
+        thickness = 1
+        
+        y_start = 30
+        line_spacing = 25
+        
+        # Title
+        cv2.putText(metrics_img, "Trajectory Metrics", (10, y_start), 
+                   font, 0.7, (0, 255, 255), 2)
+        
+        y_pos = y_start + 30
+        
+        # Display metrics
+        metric_names = {
+            'length': 'Length (m)',
+            'straightness': 'Straightness',
+            'smoothness': 'Smoothness', 
+            'obstacle_clearance': 'Avg Clearance (m)',
+            'execution_feasibility': 'Feasibility',
+            'overall_quality': 'Overall Quality'
+        }
+        
+        for key, display_name in metric_names.items():
+            if key in metrics:
+                value = metrics[key]
+                if key in ['length', 'obstacle_clearance']:
+                    text = f"{display_name}: {value:.2f}"
+                else:
+                    text = f"{display_name}: {value:.2f}"
+                
+                # Color code based on value
+                if key == 'overall_quality':
+                    if value > 0.7:
+                        color = (0, 255, 0)  # Green
+                    elif value > 0.4:
+                        color = (0, 255, 255)  # Yellow
+                    else:
+                        color = (0, 0, 255)  # Red
+                else:
+                    color = font_color
+                
+                cv2.putText(metrics_img, text, (10, y_pos), 
+                           font, font_scale, color, thickness)
+                y_pos += line_spacing
+        
+        return metrics_img
+    
+    def create_obstacle_analysis_visualization(self,
+                                             frame: np.ndarray,
+                                             obstacle_mask: np.ndarray,
+                                             distance_map: Optional[np.ndarray] = None) -> np.ndarray:
+        """Create visualization showing obstacle analysis."""
+        if distance_map is None:
+            # Create distance map if not provided
+            free_space = ~obstacle_mask
+            distance_map = cv2.distanceTransform(
+                free_space.astype(np.uint8), cv2.DIST_L2, 5
+            )
+        
+        # Create heatmap of distances
+        distance_normalized = cv2.normalize(distance_map, None, 0, 255, cv2.NORM_MINMAX)
+        distance_colored = cv2.applyColorMap(distance_normalized.astype(np.uint8), 
+                                           cv2.COLORMAP_JET)
+        
+        # Blend with original frame
+        result = cv2.addWeighted(frame, 0.6, distance_colored, 0.4, 0)
+        
+        # Overlay obstacles in red
+        result = self.overlay_mask(result, obstacle_mask, (0, 0, 255), 0.8)
+        
+        # Add colorbar legend
+        cv2.putText(result, "Distance to Obstacles", (10, 30), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.putText(result, "Blue: Far", (10, result.shape[0] - 40), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+        cv2.putText(result, "Red: Near", (10, result.shape[0] - 20), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+        
+        return result
         
     def overlay_mask(self, 
                     frame: np.ndarray, 
